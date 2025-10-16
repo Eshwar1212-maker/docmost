@@ -110,4 +110,19 @@ export class AttachmentRepo {
       .where('filePath', '=', attachmentFilePath)
       .executeTakeFirst();
   }
+  async findByHash(
+    hash: string,
+    workspaceId: string,
+    opts?: { trx?: KyselyTransaction },
+  ): Promise<Attachment | null> {
+    const db = dbOrTx(this.db, opts?.trx);
+
+    return db
+      .selectFrom('attachments')
+      .select(this.baseFields)
+      .where('hash', '=', hash)
+      .where('workspaceId', '=', workspaceId)
+      .where('deletedAt', 'is', null)
+      .executeTakeFirst();
+  }
 }

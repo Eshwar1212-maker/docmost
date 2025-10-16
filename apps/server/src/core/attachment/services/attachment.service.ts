@@ -26,6 +26,7 @@ import { SpaceRepo } from '@docmost/db/repos/space/space.repo';
 import { InjectQueue } from '@nestjs/bullmq';
 import { QueueJob, QueueName } from '../../../integrations/queue/constants';
 import { Queue } from 'bullmq';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class AttachmentService {
@@ -50,6 +51,21 @@ export class AttachmentService {
   }) {
     const { filePromise, pageId, spaceId, userId, workspaceId } = opts;
     const preparedFile: PreparedFile = await prepareFile(filePromise);
+
+    const hash = crypto
+      .createHash('sha256')
+      .update(preparedFile.buffer)
+      .digest('hex');
+    const existingAttachment = await this.attachmentRepo.findByHash(
+      hash,
+      workspaceId,
+    );
+    if (existingAttachment) {
+      this.logger.debug(
+        `Duplicate file detected. Returning existing attachment ${existingAttachment.id}`,
+      );
+      return existingAttachment;
+    }
 
     let isUpdate = false;
     let attachmentId = null;
@@ -102,6 +118,7 @@ export class AttachmentService {
           spaceId,
           workspaceId,
           pageId,
+          hash
         });
       }
 
@@ -142,7 +159,10 @@ export class AttachmentService {
     const preparedFile: PreparedFile = await prepareFile(filePromise);
     validateFileType(preparedFile.fileExtension, validImageExtensions);
 
-    const processedBuffer = await compressAndResizeIcon(preparedFile.buffer, type);
+    const processedBuffer = await compressAndResizeIcon(
+      preparedFile.buffer,
+      type,
+    );
     preparedFile.buffer = processedBuffer;
     preparedFile.fileSize = processedBuffer.length;
     preparedFile.fileName = uuid4() + preparedFile.fileExtension;
@@ -251,6 +271,7 @@ export class AttachmentService {
     pageId?: string;
     spaceId?: string;
     trx?: KyselyTransaction;
+    hash?: string
   }): Promise<Attachment> {
     const {
       attachmentId,
@@ -262,6 +283,7 @@ export class AttachmentService {
       pageId,
       spaceId,
       trx,
+      hash
     } = opts;
     return this.attachmentRepo.insertAttachment(
       {
@@ -276,6 +298,7 @@ export class AttachmentService {
         workspaceId: workspaceId,
         pageId: pageId,
         spaceId: spaceId,
+        hash: hash
       },
       trx,
     );
